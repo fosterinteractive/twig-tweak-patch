@@ -1,0 +1,69 @@
+diff --git a/src/TwigExtension.php b/src/TwigExtension.php
+index 676310f..668faed 100644
+--- a/src/TwigExtension.php
++++ b/src/TwigExtension.php
+@@ -7,6 +7,7 @@ use Drupal\Core\Entity\EntityInterface;
+ use Drupal\Core\Site\Settings;
+ use Drupal\Core\Url;
+ use Drupal\image\Entity\ImageStyle;
++use Drupal\file\Entity\File;
+ use Symfony\Cmf\Component\Routing\RouteObjectInterface;
+
+ /**
+@@ -49,6 +50,7 @@ class TwigExtension extends \Twig_Extension {
+       new \Twig_SimpleFilter('token_replace', [$this, 'tokenReplaceFilter']),
+       new \Twig_SimpleFilter('preg_replace', [$this, 'pregReplaceFilter']),
+       new \Twig_SimpleFilter('image_style', [$this, 'imageStyle']),
++      new \Twig_SimpleFilter('image_style_responsive', [$this, 'responsiveImageStyleFromFile']),
+       new \Twig_SimpleFilter('transliterate', [$this, 'transliterate']),
+       new \Twig_SimpleFilter('check_markup', [$this, 'checkMarkup']),
+     ];
+@@ -494,4 +496,48 @@ class TwigExtension extends \Twig_Extension {
+     return !Settings::get('twig_tweak_check_access', TRUE) || $entity->access('view');
+   }
+
++  /**
++   * Returns the URL of this image derivative for an original image path or URI.
++   *
++   * @param string $fid
++   *   The file ID of the image.
++   * @param string $style
++   *   The responsive image style.
++   *
++   * @return array
++   *   A render array for the responsive image.
++   */
++  public function responsiveImageStyleFromFile($fid, $style) {
++    $file = File::load($fid);
++      if ($file) {
++          $variables = array(
++              'responsive_image_style_id' => $style,
++              'uri' => $file->getFileUri(),
++          );
++          // The image.factory service will check if our image is valid.
++          $image = \Drupal::service('image.factory')->get($file->getFileUri());
++          if ($image->isValid()) {
++              $variables['width'] = $image->getWidth();
++              $variables['height'] = $image->getHeight();
++          }
++          else {
++              $variables['width'] = $variables['height'] = NULL;
++          }
++          $image_build = [
++              '#theme' => 'responsive_image',
++              '#width' => $variables['width'],
++              '#height' => $variables['height'],
++              '#responsive_image_style_id' => $variables['responsive_image_style_id'],
++              '#uri' => $variables['uri'],
++          ];
++          // Add the file entity to the cache dependencies.
++          // This will clear our cache when this entity updates.
++          $renderer = \Drupal::service('renderer');
++          $renderer->addCacheableDependency($image_build, $file);
++          // Return the render array as block content.
++          return $image_build;
++      }
++    return NULL;
++  }
++
+ }
